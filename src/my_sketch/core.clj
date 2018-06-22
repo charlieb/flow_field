@@ -23,7 +23,7 @@
   (or (>= x w) (< x 0.0)
       (>= y h) (< y 0.0)))
 (defn new-part [w h]
-  {:x (q/random w) :y (q/random h) :vx 0.0 :vy 0.0})
+  {:x (q/random w) :y (q/random h) :vx 0.0 :vy 0.0 :history '()})
 (defn update-state [state]
   (let [x 20
         y 20
@@ -36,7 +36,7 @@
         noise_scl 0.2
         regen-noise false
         regen-field false
-        nparts 1500
+        nparts 10
 
         rot (if (nil? state) 0.0 (+ (:rot state) step))
         offset (if (or (nil? state) regen-noise)
@@ -45,6 +45,12 @@
                           (* 6.28 (q/noise (* noise_scl i)  (* noise_scl j)))))
                       (range (* x y)))
                  (:offset state))
+        dead-parts (if (nil? state) '()
+                     (let [new-dead (map :history (filter (fn [p] (hits-edge (:x p) (:y p) x y)) (:parts state)))]
+                       (if (nil? new-dead)
+                         (:dead-parts state)
+                         (concat new-dead (:dead-parts state))
+                           )))
         parts (if (or (nil? state) (not (= nparts (count (:parts state)))))
                 (repeatedly nparts (fn [] (new-part sx sy)))
                 (map (fn [p]
@@ -56,7 +62,10 @@
                          {:x (+ (:x p) (:vx p))
                           :y (+ (:y p) (:vy p))
                           :vx (+ (* (:vx p) 0.75) (* (:x acc) 0.25))
-                          :vy (+ (* (:vy p) 0.75) (* (:y acc) 0.25))})))
+                          :vy (+ (* (:vy p) 0.75) (* (:y acc) 0.25))
+                          :history (if (zero? (mod (:iterations state) 5))
+                                     (conj (:history p) {:x (:x p) :y (:y p)})
+                                     (:history p))})))
                      (:parts state)))
         field (if (or (nil? state) regen-field)
                 (map (fn [a off] {:x (q/cos (+ off rot (* a rotscl))) 
@@ -71,6 +80,7 @@
      :rot rot
      :offset offset
      :parts parts
+     :dead-parts dead-parts
      :field field
      :iterations iterations
      }))
@@ -78,21 +88,34 @@
 (defn draw-state [state]
   ; Clear the sketch by filling it with light-grey color.
   ; Set color.
-  (if (and (not (nil? state)) (zero? (mod (:iterations state) 1)))
+  (if (and (not (nil? state)) (zero? (mod (:iterations state) 10)))
     (do
       (q/background 240)
       (q/stroke-weight 1)
-      (q/stroke 0 0 0 255)
-      (doseq [[fi field] (map-indexed list (:field state))]
-        (let [{i :x j :y} (to-xy fi (:x state))]
-          (q/line (* i (:scl state))
-                  (* j (:scl state))
-                  (* (+ i (:x field)) (:scl state))
-                  (* (+ j (:y field)) (:scl state)))))
-      (q/stroke-weight 5)
-      (q/stroke 128 0 0 255)
-      (doseq [p (:parts state)] (q/point (:x p) (:y p)))
-      ))
+      (q/stroke 0 0 0 55)
+      ; Field lines
+      (when false
+        (doseq [[fi field] (map-indexed list (:field state))]
+          (let [{i :x j :y} (to-xy fi (:x state))]
+            (q/line (* i (:scl state))
+                    (* j (:scl state))
+                    (* (+ i (:x field)) (:scl state))
+                    (* (+ j (:y field)) (:scl state))))))
+      ;(q/stroke-weight 5)
+      ;(q/stroke 128 0 0 255)
+      (doseq [p (:parts state)]
+        ;(q/point (:x p) (:y p))
+        (doseq [[h hp] (map list (:history p) (rest (:history p)))]
+          (q/line (:x h) (:y h) (:x hp) (:y hp))))
+
+      (println (count (:dead-parts state)))
+      (doseq [p (:dead-parts state)]
+        (doseq [[h hp] (map list p (rest p))]
+          (q/line (:x h) (:y h) (:x hp) (:y hp))))))
+
+  ; (when (and (not (nil? state)) (zero? (mod (:iterations state) 30)))
+  ;   (q/save "hairy.png"))
+
   (println (q/current-frame-rate)))
 
 (defn -main [& args]

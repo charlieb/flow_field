@@ -51,12 +51,17 @@
           (+ 1 (* (q/sin (* x sin_scl)) (q/sin (* y sin_scl))))))))
 
 (defn sin-sin2 [x y]
-  (let [xscls '(0.5 0.1)
+  (let [xscls '(0.5 0.1 0.073)
         yscls '(0.55 0.15)
         len (+ (count xscls) (count yscls))]
     (* (/ 6.28 (* 2 len))
        (+ len (reduce + (concat (map (fn [xscl] (q/sin (* x xscl))) xscls)
                                 (map (fn [yscl] (q/sin (* y yscl))) yscls)))))))
+(defn circle [x y]
+  (let [cx 25
+        cy 25]
+    (- (q/atan2 (- cy y) (- cx x))
+       1.6)))
 
 ;---------------------------------
 (defn xya-from [p angle d]
@@ -91,17 +96,22 @@
         sy (* y scl)
 
         nparts 100
+
+        field (if (contains? state :field)
+                (map (fn [off] {:x (q/cos off) 
+                                :y (q/sin off)}) 
+                     (:offset state))
+                (:field state))
         ]
-    (println (count (:parts state)) (count (:field state)))
     (assoc state
-           :parts (if (not (= nparts (count (:parts state))))
+           :parts (if (or (not (contains? state :parts)) (not (= nparts (count (:parts state)))))
                     (repeatedly nparts (fn [] (new-part sx sy)))
                     (map (fn [p]
                            (if (is-particle-dead p sx sy)
                              (new-part sx sy)
                              (let [px (int (/ (:x p) scl))
                                    py (int (/ (:y p) scl))
-                                   acc (nth (:field state) (from-xy px py x))]
+                                   acc (nth field (from-xy px py x))]
                                {:x (+ (:x p) (:vx p))
                                 :y (+ (:y p) (:vy p))
                                 :vx (+ (* (:vx p) 0.75) (* (:x acc) 0.25))
@@ -110,11 +120,7 @@
                                            (conj (:history p) {:x (:x p) :y (:y p)})
                                            (:history p))})))
                          (:parts state)))
-           :field (if (contains? state :field)
-                    (map (fn [off] {:x (q/cos off) 
-                                    :y (q/sin off)}) 
-                         (:offset state))
-                    (:field state)))))
+           :field field)))
 
 (defn update-state [state]
   (let [x 50
@@ -129,8 +135,10 @@
         offset (if (or (nil? state) regen-noise)
                  (map (fn [i] 
                         (let [{i :x j :y} (to-xy i x)]
+                          (+ (* 20 (circle i j)) (sin-sin i j))
+                          ;(circle i j)
                           ;(sin-sin i j)
-                          (sin-sin2 i j)
+                          ;(sin-sin2 i j)
                           ;(pure-perlin i j)
                           ;(sinxsin i j)
                           ;(sinxsin-perlin i j)
@@ -160,11 +168,12 @@
   ; Set color.
   (if (and (not (nil? state)) (zero? (mod (:iterations state) 20)))
     (do
+      (println (q/current-frame-rate))
       (q/background 240)
       (q/stroke-weight 1)
-      (q/stroke 0 0 0 55)
+      (q/stroke 0 0 0 128)
       ; Field lines
-      (when true 
+      (when false 
         (doseq [[fi field] (map-indexed list (:field state))]
           (let [{i :x j :y} (to-xy fi (:x state))]
             (q/stroke-weight 5)
@@ -188,10 +197,11 @@
           (doseq [[h hp] (map list p (rest p))]
             (q/line (:x h) (:y h) (:x hp) (:y hp)))))))
 
-   (when (and (not (nil? state)) (zero? (mod (:iterations state) 30)))
+
+  (when (and false (not (nil? state)) (zero? (mod (:iterations state) 30)))
     (q/save "hairy3.png"))
 
-  (println (q/current-frame-rate)))
+  )
 
 (defn -main [& args]
   (q/defsketch my-sketch

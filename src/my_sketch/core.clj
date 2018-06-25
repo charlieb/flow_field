@@ -78,6 +78,44 @@
 
 
 ;---------------------------------
+(defn is-particle-dead [p w h]
+  (let [max-len 10]
+    (or (hits-edge (:x p) (:y p) w h)
+        (> (count (:history p)) max-len))))
+
+(defn update-flow-particles-state [state]
+  (let [x (:x state)
+        y (:y state)
+        scl (:scl state) 
+        sx (* x scl)
+        sy (* y scl)
+
+        nparts 100
+        ]
+    (println (count (:parts state)) (count (:field state)))
+    (assoc state
+           :parts (if (not (= nparts (count (:parts state))))
+                    (repeatedly nparts (fn [] (new-part sx sy)))
+                    (map (fn [p]
+                           (if (is-particle-dead p sx sy)
+                             (new-part sx sy)
+                             (let [px (int (/ (:x p) scl))
+                                   py (int (/ (:y p) scl))
+                                   acc (nth (:field state) (from-xy px py x))]
+                               {:x (+ (:x p) (:vx p))
+                                :y (+ (:y p) (:vy p))
+                                :vx (+ (* (:vx p) 0.75) (* (:x acc) 0.25))
+                                :vy (+ (* (:vy p) 0.75) (* (:y acc) 0.25))
+                                :history (if (zero? (mod (:iterations state) 10))
+                                           (conj (:history p) {:x (:x p) :y (:y p)})
+                                           (:history p))})))
+                         (:parts state)))
+           :field (if (contains? state :field)
+                    (map (fn [off] {:x (q/cos off) 
+                                    :y (q/sin off)}) 
+                         (:offset state))
+                    (:field state)))))
+
 (defn update-state [state]
   (let [x 50
         y 50
@@ -85,16 +123,9 @@
         sx (* x scl)
         sy (* y scl)
 
-        step 0.01
         regen-noise false
         regen-field false
-        nparts 100
-        max-len 10
 
-        is-dead (fn [p] (or (hits-edge (:x p) (:y p) sx sy)
-                            (> (count (:history p)) max-len)))
-
-        rot (if (nil? state) 0.0 (+ (:rot state) step))
         offset (if (or (nil? state) regen-noise)
                  (map (fn [i] 
                         (let [{i :x j :y} (to-xy i x)]
@@ -106,56 +137,34 @@
                           ))
                       (range (* x y)))
                  (:offset state))
+
         dead-parts (if (nil? state) '()
-                     (let [new-dead (map :history (filter is-dead (:parts state)))]
+                     (let [new-dead (map :history (filter (fn [p] (is-particle-dead p sx sy)) (:parts state)))]
                        (if (nil? new-dead)
                          (:dead-parts state)
                          (concat new-dead (:dead-parts state))
                            )))
-        parts (if (or (nil? state) (not (= nparts (count (:parts state)))))
-                (repeatedly nparts (fn [] (new-part sx sy)))
-                (map (fn [p]
-                       (if (is-dead p)
-                         (new-part sx sy)
-                       (let [px (int (/ (:x p) scl))
-                             py (int (/ (:y p) scl))
-                             acc (nth (:field state) (from-xy px py x))]
-                         {:x (+ (:x p) (:vx p))
-                          :y (+ (:y p) (:vy p))
-                          :vx (+ (* (:vx p) 0.75) (* (:x acc) 0.25))
-                          :vy (+ (* (:vy p) 0.75) (* (:y acc) 0.25))
-                          :history (if (zero? (mod (:iterations state) 10))
-                                     (conj (:history p) {:x (:x p) :y (:y p)})
-                                     (:history p))})))
-                     (:parts state)))
-        field (if (or (nil? state) regen-field)
-                (map (fn [off] {:x (q/cos (+ off rot)) 
-                                :y (q/sin (+ off rot))}) 
-                      offset)
-                (:field state))
         iterations (if (nil? state) 1 (+ (:iterations state) 1))
         ]
-    {:x x
-     :y y
-     :scl scl
-     :rot rot
-     :offset offset
-     :parts parts
-     :dead-parts dead-parts
-     :field field
-     :iterations iterations
-     }))
+    (assoc state
+           :x x
+           :y y
+           :scl scl
+           :offset offset
+           :dead-parts dead-parts
+           :iterations iterations
+           )))
 
 (defn draw-state [state]
   ; Clear the sketch by filling it with light-grey color.
   ; Set color.
-  (if (and (not (nil? state)) (zero? (mod (:iterations state) 200)))
+  (if (and (not (nil? state)) (zero? (mod (:iterations state) 20)))
     (do
       (q/background 240)
       (q/stroke-weight 1)
       (q/stroke 0 0 0 55)
       ; Field lines
-      (when false 
+      (when true 
         (doseq [[fi field] (map-indexed list (:field state))]
           (let [{i :x j :y} (to-xy fi (:x state))]
             (q/stroke-weight 5)
@@ -191,7 +200,9 @@
     ; setup function called only once, during sketch initialization.
     :setup setup
     ; update-state is called on each iteration before draw-state.
-    :update update-state
+    :update (fn [state] (-> state
+                            update-state
+                            update-flow-particles-state))
     :draw draw-state
     :features [:keep-on-top]
     ; This sketch uses functional-mode middleware.

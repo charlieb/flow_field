@@ -35,7 +35,7 @@
     (+ (* 0.5 (mod (* 12.5 (q/noise (* x noise_scl)  (* y noise_scl))) 6.28))
        (* (/ 6.28 4) (+ 2 (q/sin (* x sin_scl)) (q/sin (* y sin_scl)))))))
 (defn sin-sin [x y]
-  (let [sin_scl 0.5]
+  (let [sin_scl 0.15]
     (* (/ 6.28 4) 
        (+ 2 (+ (q/sin (* x sin_scl)) (q/sin (* y sin_scl)))))))
 (defn sinxsin [x y]
@@ -58,10 +58,17 @@
        (+ len (reduce + (concat (map (fn [xscl] (q/sin (* x xscl))) xscls)
                                 (map (fn [yscl] (q/sin (* y yscl))) yscls)))))))
 (defn circle [x y]
-  (let [cx 25
-        cy 25]
+  (let [cx 75
+        cy 75]
     (- (q/atan2 (- cy y) (- cx x))
        1.6)))
+
+(defn sin-sin-sq [x y]
+  (let [sin_scl 0.1]
+    (* (/ 6.28 4) 
+       (+ 2 (+ (q/sin (* x x sin_scl)) (q/sin (* y y sin_scl)))))))
+
+
 
 ;---------------------------------
 (defn xya-from [p angle d]
@@ -95,7 +102,7 @@
         sx (* x scl)
         sy (* y scl)
 
-        nparts 100
+        nparts 300
 
         field (if (contains? state :field)
                 (map (fn [off] {:x (q/cos off) 
@@ -123,8 +130,8 @@
            :field field)))
 
 (defn update-state [state]
-  (let [x 50
-        y 50
+  (let [x 150
+        y 150
         scl 10 
         sx (* x scl)
         sy (* y scl)
@@ -135,8 +142,12 @@
         offset (if (or (nil? state) regen-noise)
                  (map (fn [i] 
                         (let [{i :x j :y} (to-xy i x)]
-                          (+ (* 20 (circle i j)) (sin-sin i j))
-                          ;(circle i j)
+                          ;(+ (* 20 (circle i j)) (sin-sin-sq i j))
+                          (+ (* 10 (circle i j)) (sin-sin i j))
+                          ;(sin-sin-sq i j)
+                          ;(* (sin-sin i j) (circle i j))
+                          ;(* (pure-perlin i j) (circle i j))
+                          ;(/ (circle i j) (+ i 1))
                           ;(sin-sin i j)
                           ;(sin-sin2 i j)
                           ;(pure-perlin i j)
@@ -166,7 +177,7 @@
 (defn draw-state [state]
   ; Clear the sketch by filling it with light-grey color.
   ; Set color.
-  (if (and (not (nil? state)) (zero? (mod (:iterations state) 20)))
+  (if (and (not (nil? state)) (zero? (mod (:iterations state) 200)))
     (do
       (println (q/current-frame-rate))
       (q/background 240)
@@ -199,14 +210,14 @@
 
 
   (when (and false (not (nil? state)) (zero? (mod (:iterations state) 30)))
-    (q/save "hairy3.png"))
+    (q/save "hairy.png"))
 
   )
 
 (defn -main [& args]
   (q/defsketch my-sketch
     :title "You spin my circle right round"
-    :size [500 500]
+    :size [1500 1500]
     ; setup function called only once, during sketch initialization.
     :setup setup
     ; update-state is called on each iteration before draw-state.

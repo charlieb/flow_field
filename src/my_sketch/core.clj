@@ -23,7 +23,7 @@
   (or (>= x w) (< x 0.0)
       (>= y h) (< y 0.0)))
 (defn new-part [w h]
-  {:x (q/random w) :y (q/random h) :vx 0.0 :vy 0.0 :history '()})
+  {:x (q/random w) :y (q/random h) :a 0.0 :vx 0.0 :vy 0.0 :history '()})
 
 ; MAP FUNCTIONS
 (defn pure-perlin [x y]
@@ -71,32 +71,40 @@
 
 (defn gradient [x y]
   (/ x 10.))
+(defn distance [x y]
+  (+ (* x x) (* y y)))
 
 ;---------------------------------
 (defn xya-from [p angle d]
   (let [r 
-  {:a angle
-   :x (+ (:x p) (* (q/cos angle) d))
-   :y (+ (:y p) (* (q/sin angle) d))}]
+  (assoc p
+         :a angle
+         :x (+ (:x p) (* (q/cos angle) d))
+         :y (+ (:y p) (* (q/sin angle) d)))]
     ;(println p r)
     r))
 
 (defn find-contour [p f target]
   "point, map function, target value"
   (let [nsamples 50
-        dist 1.0
+        dist 10.0
         search (fn [high low]
-                 (->> (range nsamples) 
-                      (map (fn [n] (+ low (* n (/ (- high low) (- nsamples 1))))))
-                      (map (fn [a] (xya-from p a dist)))
-                      (apply min-key (fn [p] (Math/abs (float (- (f (:x p) (:y p)) target)))))))
+                 (let [res
+                       (->> (range nsamples) 
+                            (map (fn [n] (+ low (* n (/ (- high low) (- nsamples 1))))))
+                            (map (fn [a] (xya-from p a dist)))
+                            ;(apply min-key (fn [p] (Math/abs (float (- (f (:x p) (:y p)) target)))))
+                            )]
+                   ;(doseq [r res] (println r (f (:x r) (:y r)) (Math/abs (float (- (f (:x r) (:y r)) target)))))
+                   (apply min-key (fn [p] (Math/abs (float (- (f (:x p) (:y p)) target)))) res)))
                       ]
     (search (+ (:a p) (* 3.1415 (/ (- nsamples 1) nsamples))) 
             (- (:a p) (* 3.1415 (/ (- nsamples 1) nsamples))))))
 
 (defn follow-contour [p f]
-  (doseq [pt (take 50 (iterate (fn [p] (find-contour p f (f (:x p) (:y p)))) p))]
-          (println pt (gradient (:x pt) (:y pt)))))
+  (doseq [pt (take 5 (iterate (fn [pi] (find-contour pi f (f (:x p) (:y p)))) p))]
+    (println '---------')
+    (println pt (f (:x pt) (:y pt)))))
 
 
 ;---------------------------------
@@ -105,6 +113,33 @@
     (or (hits-edge (:x p) (:y p) w h)
         (> (count (:history p)) max-len))))
 
+(defn update-contour-particles-state [state]
+  (let [x (:x state)
+        y (:y state)
+        scl (:scl state) 
+        sx (* x scl)
+        sy (* y scl)
+
+        scaled-fn (fn [i j] ((:map-fn state)
+                             (/ i scl)
+                             (/ j scl)))
+        new-part-target (fn [] (let [p (new-part sx sy)]
+                                 (assoc p :target (scaled-fn (:x p) (:y p)))))
+        nparts 100
+        ]
+    (assoc state
+           :parts (if (or (not (contains? state :parts)) (not (= nparts (count (:parts state)))))
+                    (repeatedly nparts new-part-target)
+                    (map (fn [p]
+                           (if (is-particle-dead p sx sy)
+                             (new-part-target)
+                             (assoc (find-contour p scaled-fn (:target p))
+                                    :history (if (zero? (mod (:iterations state) 10))
+                                               (conj (:history p) {:x (:x p) :y (:y p)})
+                                               (:history p)))))
+                         (:parts state)))
+           )))
+
 (defn update-flow-particles-state [state]
   (let [x (:x state)
         y (:y state)
@@ -112,13 +147,16 @@
         sx (* x scl)
         sy (* y scl)
 
-        nparts 300
+        nparts 200
 
         field (if (contains? state :field)
-                (map (fn [off] {:x (q/cos off) 
-                                :y (q/sin off)}) 
-                     (:offset state))
-                (:field state))
+                (:field state)
+                (map (fn [i]
+                        (let [{i :x j :y} (to-xy i x)
+                              value ((:map-fn state) i j)]
+                          {:x (q/cos value) 
+                           :y (q/sin value)}))
+                     (range (* x y))))
         ]
     (assoc state
            :parts (if (or (not (contains? state :parts)) (not (= nparts (count (:parts state)))))
@@ -140,32 +178,27 @@
            :field field)))
 
 (defn update-state [state]
-  (let [x 150
-        y 150
+  (let [x 50
+        y 50
         scl 10 
         sx (* x scl)
         sy (* y scl)
 
-        regen-noise false
-        regen-field false
-
-        offset (if (or (nil? state) regen-noise)
-                 (map (fn [i] 
-                        (let [{i :x j :y} (to-xy i x)]
-                          ;(+ (* 20 (circle i j)) (sin-sin-sq i j))
-                          (+ (* 10 (circle i j)) (sin-sin i j))
-                          ;(sin-sin-sq i j)
-                          ;(* (sin-sin i j) (circle i j))
-                          ;(* (pure-perlin i j) (circle i j))
-                          ;(/ (circle i j) (+ i 1))
-                          ;(sin-sin i j)
-                          ;(sin-sin2 i j)
-                          ;(pure-perlin i j)
-                          ;(sinxsin i j)
-                          ;(sinxsin-perlin i j)
-                          ))
-                      (range (* x y)))
-                 (:offset state))
+        map-fn (fn [i j] 
+                 (distance i j)
+                 ;(gradient i j)
+                 ;(+ (* 20 (circle i j)) (sin-sin-sq i j))
+                 ;(+ (* 10 (circle i j)) (sin-sin i j))
+                 ;(sin-sin-sq i j)
+                 ;(* (sin-sin i j) (circle i j))
+                 ;(* (pure-perlin i j) (circle i j))
+                 ;(/ (circle i j) (+ i 1))
+                 ;(sin-sin i j)
+                 ;(sin-sin2 i j)
+                 ;(pure-perlin i j)
+                 ;(sinxsin i j)
+                 ;(sinxsin-perlin i j)
+                 )
 
         dead-parts (if (nil? state) '()
                      (let [new-dead (map :history (filter (fn [p] (is-particle-dead p sx sy)) (:parts state)))]
@@ -173,13 +206,14 @@
                          (:dead-parts state)
                          (concat new-dead (:dead-parts state))
                            )))
+
         iterations (if (nil? state) 1 (+ (:iterations state) 1))
         ]
     (assoc state
            :x x
            :y y
            :scl scl
-           :offset offset
+           :map-fn map-fn
            :dead-parts dead-parts
            :iterations iterations
            )))
@@ -187,7 +221,7 @@
 (defn draw-state [state]
   ; Clear the sketch by filling it with light-grey color.
   ; Set color.
-  (if (and (not (nil? state)) (zero? (mod (:iterations state) 200)))
+  (if (and (not (nil? state)) (zero? (mod (:iterations state) 100)))
     (do
       (println (q/current-frame-rate))
       (q/background 240)
@@ -227,13 +261,15 @@
 (defn -main [& args]
   (q/defsketch my-sketch
     :title "You spin my circle right round"
-    :size [1500 1500]
+    :size [500 500]
     ; setup function called only once, during sketch initialization.
     :setup setup
     ; update-state is called on each iteration before draw-state.
     :update (fn [state] (-> state
                             update-state
-                            update-flow-particles-state))
+                            ;update-flow-particles-state
+                            update-contour-particles-state
+                            ))
     :draw draw-state
     :features [:keep-on-top]
     ; This sketch uses functional-mode middleware.

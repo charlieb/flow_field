@@ -69,24 +69,34 @@
        (+ 2 (+ (q/sin (* x x sin_scl)) (q/sin (* y y sin_scl)))))))
 
 
+(defn gradient [x y]
+  (/ x 10.))
 
 ;---------------------------------
 (defn xya-from [p angle d]
+  (let [r 
   {:a angle
    :x (+ (:x p) (* (q/cos angle) d))
-   :y (+ (:y p) (* (q/sin angle) d))})
+   :y (+ (:y p) (* (q/sin angle) d))}]
+    ;(println p r)
+    r))
 
 (defn find-contour [p f target]
   "point, map function, target value"
   (let [nsamples 50
         dist 1.0
         search (fn [high low]
-                  (->> (range nsamples) 
-                       (map (fn [n] (+ low (* n (/ (- high low) (- nsamples 1))))))
-                       (map (fn [a] (xya-from p a dist)))
-                       (apply min-key (fn [p] (Math/abs (float (- (f (:x p) (:y p)) target)))))))
-        ]
-    (search (+ (:a p) 3.14) (- (:a p) 3.14))))
+                 (->> (range nsamples) 
+                      (map (fn [n] (+ low (* n (/ (- high low) (- nsamples 1))))))
+                      (map (fn [a] (xya-from p a dist)))
+                      (apply min-key (fn [p] (Math/abs (float (- (f (:x p) (:y p)) target)))))))
+                      ]
+    (search (+ (:a p) (* 3.1415 (/ (- nsamples 1) nsamples))) 
+            (- (:a p) (* 3.1415 (/ (- nsamples 1) nsamples))))))
+
+(defn follow-contour [p f]
+  (doseq [pt (take 50 (iterate (fn [p] (find-contour p f (f (:x p) (:y p)))) p))]
+          (println pt (gradient (:x pt) (:y pt)))))
 
 
 ;---------------------------------

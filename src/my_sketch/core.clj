@@ -8,7 +8,7 @@
   ; Set frame rate to 30 frames per second.
   (q/frame-rate 120)
   ; Set color mode to HSB (HSV) instead of default RGB.
-  (q/color-mode :hsb)
+  (q/color-mode :hsb 1.0)
   ; setup function returns initial state. It contains
   ; circle color and position.
   )
@@ -87,7 +87,8 @@
 (defn find-contour [p f target]
   "point, map function, target value"
   (let [nsamples 50
-        dist 10.0
+        dist 1.0
+        half-look 3.0;3.1415
         search (fn [high low]
                  (let [res
                        (->> (range nsamples) 
@@ -98,8 +99,8 @@
                    ;(doseq [r res] (println r (f (:x r) (:y r)) (Math/abs (float (- (f (:x r) (:y r)) target)))))
                    (apply min-key (fn [p] (Math/abs (float (- (f (:x p) (:y p)) target)))) res)))
                       ]
-    (search (+ (:a p) (* 3.1415 (/ (- nsamples 1) nsamples))) 
-            (- (:a p) (* 3.1415 (/ (- nsamples 1) nsamples))))))
+    (search (+ (:a p) half-look)
+            (- (:a p) half-look))))
 
 (defn follow-contour [p f]
   (doseq [pt (take 5 (iterate (fn [pi] (find-contour pi f (f (:x p) (:y p)))) p))]
@@ -133,7 +134,7 @@
                     (map (fn [p]
                            (if (is-particle-dead p sx sy)
                              (new-part-target)
-                             (assoc (find-contour p scaled-fn (:target p))
+                               (assoc (find-contour p scaled-fn (:target p))
                                     :history (if (zero? (mod (:iterations state) 10))
                                                (conj (:history p) {:x (:x p) :y (:y p)})
                                                (:history p)))))
@@ -185,7 +186,7 @@
         sy (* y scl)
 
         map-fn (fn [i j] 
-                 (distance i j)
+                 ;(distance i j)
                  ;(gradient i j)
                  ;(+ (* 20 (circle i j)) (sin-sin-sq i j))
                  ;(+ (* 10 (circle i j)) (sin-sin i j))
@@ -195,13 +196,14 @@
                  ;(/ (circle i j) (+ i 1))
                  ;(sin-sin i j)
                  ;(sin-sin2 i j)
-                 ;(pure-perlin i j)
+                 (pure-perlin i j)
                  ;(sinxsin i j)
                  ;(sinxsin-perlin i j)
                  )
 
         dead-parts (if (nil? state) '()
-                     (let [new-dead (map :history (filter (fn [p] (is-particle-dead p sx sy)) (:parts state)))]
+                     (let [new-dead (filter (complement empty?) 
+                                            (map :history (filter (fn [p] (is-particle-dead p sx sy)) (:parts state))))]
                        (if (nil? new-dead)
                          (:dead-parts state)
                          (concat new-dead (:dead-parts state))
@@ -224,9 +226,9 @@
   (if (and (not (nil? state)) (zero? (mod (:iterations state) 100)))
     (do
       (println (q/current-frame-rate))
-      (q/background 240)
+      (q/background 0.8)
       (q/stroke-weight 1)
-      (q/stroke 0 0 0 128)
+      (q/stroke 0 0 0 0.5)
       ; Field lines
       (when false 
         (doseq [[fi field] (map-indexed list (:field state))]
@@ -238,10 +240,18 @@
                     (* j (:scl state))
                     (* (+ i (:x field)) (:scl state))
                     (* (+ j (:y field)) (:scl state))))))
+
+      (q/stroke 0.5 0 0 0.2)
+      (let [values (map (fn [p] ((:map-fn state) (:x p) (:y p))) (:parts state))
+            hue1 0.6
+            hue2 1.0
+            high (apply max values)
+            low  (apply min values)
+            fac (fn [v] (+ hue1 (* (- hue2 hue1) (/ (- v low) high))))]
       (when true
         ;(q/stroke-weight 5)
-        (q/stroke 128 0 0 55)
         (doseq [p (:parts state)]
+          (q/stroke (fac ((:map-fn state) (:x p) (:y p))) 1.0 0.8 0.2)
           ;(q/point (:x p) (:y p))
           (doseq [[h hp] (map list (:history p) (rest (:history p)))]
             (q/line (:x h) (:y h) (:x hp) (:y hp)))
@@ -249,8 +259,10 @@
 
       (when true ; Dead part lines
         (doseq [p (:dead-parts state)]
+          (q/stroke (fac ((:map-fn state) (:x (first p)) (:y (first p)))) 1.0 0.8 0.2)
           (doseq [[h hp] (map list p (rest p))]
             (q/line (:x h) (:y h) (:x hp) (:y hp)))))))
+    )
 
 
   (when (and false (not (nil? state)) (zero? (mod (:iterations state) 30)))

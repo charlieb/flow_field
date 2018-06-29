@@ -23,11 +23,11 @@
   (or (>= x w) (< x 0.0)
       (>= y h) (< y 0.0)))
 (defn new-part [w h]
-  {:x (q/random w) :y (q/random h) :a 0.0 :vx 0.0 :vy 0.0 :history '()})
+  {:x (q/random (float w)) :y (q/random (float h)) :a 0.0 :vx 0.0 :vy 0.0 :history '()})
 
 ; MAP FUNCTIONS
 (defn pure-perlin [x y]
-  (let [noise_scl 0.15]
+  (let [noise_scl 0.05]
     (mod (* 12.5 (q/noise (* x noise_scl)  (* y noise_scl))) 6.28)))
 (defn sin-sin-perlin [x y]
   (let [noise_scl 0.1
@@ -35,7 +35,7 @@
     (+ (* 0.5 (mod (* 12.5 (q/noise (* x noise_scl)  (* y noise_scl))) 6.28))
        (* (/ 6.28 4) (+ 2 (q/sin (* x sin_scl)) (q/sin (* y sin_scl)))))))
 (defn sin-sin [x y]
-  (let [sin_scl 0.15]
+  (let [sin_scl 0.5]
     (* (/ 6.28 4) 
        (+ 2 (+ (q/sin (* x sin_scl)) (q/sin (* y sin_scl)))))))
 (defn sinxsin [x y]
@@ -88,16 +88,12 @@
   "point, map function, target value"
   (let [nsamples 50
         dist 1.0
-        half-look 3.0;3.1415
+        half-look 2.0;3.1415
         search (fn [high low]
-                 (let [res
-                       (->> (range nsamples) 
-                            (map (fn [n] (+ low (* n (/ (- high low) (- nsamples 1))))))
-                            (map (fn [a] (xya-from p a dist)))
-                            ;(apply min-key (fn [p] (Math/abs (float (- (f (:x p) (:y p)) target)))))
-                            )]
-                   ;(doseq [r res] (println r (f (:x r) (:y r)) (Math/abs (float (- (f (:x r) (:y r)) target)))))
-                   (apply min-key (fn [p] (Math/abs (float (- (f (:x p) (:y p)) target)))) res)))
+                 (->> (range nsamples) 
+                      (map (fn [n] (+ low (* n (/ (- high low) (- nsamples 1))))))
+                      (map (fn [a] (xya-from p a dist)))
+                      (apply min-key (fn [p] (Math/abs (float (- (f (:x p) (:y p)) target)))))))
                       ]
     (search (+ (:a p) half-look)
             (- (:a p) half-look))))
@@ -110,7 +106,7 @@
 
 ;---------------------------------
 (defn is-particle-dead [p w h]
-  (let [max-len 10]
+  (let [max-len 20]
     (or (hits-edge (:x p) (:y p) w h)
         (> (count (:history p)) max-len))))
 
@@ -135,7 +131,7 @@
                            (if (is-particle-dead p sx sy)
                              (new-part-target)
                                (assoc (find-contour p scaled-fn (:target p))
-                                    :history (if (zero? (mod (:iterations state) 10))
+                                    :history (if (zero? (mod (:iterations state) 2))
                                                (conj (:history p) {:x (:x p) :y (:y p)})
                                                (:history p)))))
                          (:parts state)))
@@ -189,14 +185,15 @@
                  ;(distance i j)
                  ;(gradient i j)
                  ;(+ (* 20 (circle i j)) (sin-sin-sq i j))
-                 ;(+ (* 10 (circle i j)) (sin-sin i j))
-                 ;(sin-sin-sq i j)
+                 ;(+ (* 1 (circle i j)) (sin-sin i j))
+                 (sin-sin-sq i j)
+                 ;(+ (sin-sin-sq i j) (* 10. (pure-perlin i j)))
                  ;(* (sin-sin i j) (circle i j))
                  ;(* (pure-perlin i j) (circle i j))
                  ;(/ (circle i j) (+ i 1))
                  ;(sin-sin i j)
                  ;(sin-sin2 i j)
-                 (pure-perlin i j)
+                 ;(pure-perlin i j)
                  ;(sinxsin i j)
                  ;(sinxsin-perlin i j)
                  )
@@ -242,30 +239,32 @@
                     (* (+ j (:y field)) (:scl state))))))
 
       (q/stroke 0.5 0 0 0.2)
-      (let [values (map (fn [p] ((:map-fn state) (:x p) (:y p))) (:parts state))
-            hue1 0.6
-            hue2 1.0
+      (let [values (map (fn [p] ((:map-fn state) (:x p) (:y p)))
+                       (concat (:parts state)
+                               (map first (:dead-parts state))))
+            hue1 0.1
+            hue2 0.9
             high (apply max values)
             low  (apply min values)
             fac (fn [v] (+ hue1 (* (- hue2 hue1) (/ (- v low) high))))]
-      (when true
-        ;(q/stroke-weight 5)
-        (doseq [p (:parts state)]
-          (q/stroke (fac ((:map-fn state) (:x p) (:y p))) 1.0 0.8 0.2)
-          ;(q/point (:x p) (:y p))
-          (doseq [[h hp] (map list (:history p) (rest (:history p)))]
-            (q/line (:x h) (:y h) (:x hp) (:y hp)))
-          ))
+        (when true
+          ;(q/stroke-weight 5)
+          (doseq [p (:parts state)]
+            (q/stroke (fac ((:map-fn state) (:x p) (:y p))) 1.0 0.8 0.2)
+            ;(q/point (:x p) (:y p))
+            (doseq [[h hp] (map list (:history p) (rest (:history p)))]
+              (q/line (:x h) (:y h) (:x hp) (:y hp)))
+            ))
 
-      (when true ; Dead part lines
-        (doseq [p (:dead-parts state)]
-          (q/stroke (fac ((:map-fn state) (:x (first p)) (:y (first p)))) 1.0 0.8 0.2)
-          (doseq [[h hp] (map list p (rest p))]
-            (q/line (:x h) (:y h) (:x hp) (:y hp)))))))
+        (when true ; Dead part lines
+          (doseq [p (:dead-parts state)]
+            (q/stroke (fac ((:map-fn state) (:x (first p)) (:y (first p)))) 1.0 0.8 0.2)
+            (doseq [[h hp] (map list p (rest p))]
+              (q/line (:x h) (:y h) (:x hp) (:y hp)))))))
     )
 
 
-  (when (and false (not (nil? state)) (zero? (mod (:iterations state) 30)))
+  (when (and true (not (nil? state)) (zero? (mod (:iterations state) 30)))
     (q/save "hairy.png"))
 
   )

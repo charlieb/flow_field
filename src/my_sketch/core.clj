@@ -15,7 +15,7 @@
   (or (>= x w) (< x 0.0)
       (>= y h) (< y 0.0)))
 (defn new-part [w h]
-  {:x (q/random (float w)) :y (q/random (float h)) :a 0.0 :vx 0.0 :vy 0.0 :history '()})
+  {:x (q/random (float w)) :y (q/random (float h)) :a 0.0 :vx 0.0 :vy 0.0 :history '() :target 1})
 
 ; MAP FUNCTIONS
 (defn pure-perlin [x y noise_scl]
@@ -169,14 +169,16 @@
                              (let [px (int (/ (:x p) scl))
                                    py (int (/ (:y p) scl))
                                    acc (nth field (from-xy px py x))]
-                               {:x (+ (:x p) (:vx p))
-                                :y (+ (:y p) (:vy p))
-                                :vx (+ (* (:vx p) 0.75) (* (:x acc) 0.25))
-                                :vy (+ (* (:vy p) 0.75) (* (:y acc) 0.25))
-                                :history (if (zero? (mod (:iterations state) 
-                                                         (get-in state '(:parameters :history-rate))))
-                                           (conj (:history p) {:x (:x p) :y (:y p) :target 0})
-                                           (:history p))})))
+                               (assoc
+                                 p
+                                 :x (+ (:x p) (:vx p))
+                                 :y (+ (:y p) (:vy p))
+                                 :vx (+ (* (:vx p) 0.75) (* (:x acc) 0.25))
+                                 :vy (+ (* (:vy p) 0.75) (* (:y acc) 0.25))
+                                 :history (if (zero? (mod (:iterations state) 
+                                                          (get-in state '(:parameters :history-rate))))
+                                            (conj (:history p) {:x (:x p) :y (:y p) :target 1})
+                                            (:history p))))))
                          (:parts state)))
            :field field)))
 
@@ -290,6 +292,13 @@
    :sin-sin-flow
    {:map-fn sin-sin
     :map-fn-parameters '()
+    :update-type :flow
+    :history-rate 10
+    }
+
+   :sin-sin-sq-flow
+   {:map-fn sin-sin-sq
+    :map-fn-parameters '(0.005)
     :update-type :flow
     :history-rate 10
     }

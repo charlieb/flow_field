@@ -18,9 +18,8 @@
   {:x (q/random (float w)) :y (q/random (float h)) :a 0.0 :vx 0.0 :vy 0.0 :history '()})
 
 ; MAP FUNCTIONS
-(defn pure-perlin [x y]
-  (let [noise_scl 0.05]
-    (mod (* 12.5 (q/noise (* x noise_scl)  (* y noise_scl))) 6.28)))
+(defn pure-perlin [x y noise_scl]
+    (q/noise (* x noise_scl)  (* y noise_scl)))
 (defn sin-sin-perlin [x y]
   (let [noise_scl 0.1
         sin_scl 0.5]
@@ -55,10 +54,9 @@
     (- (q/atan2 (- cy y) (- cx x))
        1.6)))
 
-(defn sin-sin-sq [x y]
-  (let [sin_scl 0.1]
-    (* (/ 6.28 4) 
-       (+ 2 (+ (q/sin (* x x sin_scl)) (q/sin (* y y sin_scl)))))))
+(defn sin-sin-sq [x y scl]
+  (* (/ 6.28 4) 
+     (+ 2 (+ (q/sin (* x x scl)) (q/sin (* y y scl))))))
 
 
 (defn gradient [x y]
@@ -141,7 +139,7 @@
                                                               (- (scaled-fn (:x p) (:y p))
                                                                  (:target p))))
                                                   (get-in state '(:parameters :contour :max-error))))
-                                        (conj (:history p) {:x (:x p) :y (:y p)})
+                                        (conj (:history p) {:x (:x p) :y (:y p) :target (:target p)})
                                         (:history p)))))
                   (:parts state)))
            )))
@@ -177,7 +175,7 @@
                                 :vy (+ (* (:vy p) 0.75) (* (:y acc) 0.25))
                                 :history (if (zero? (mod (:iterations state) 
                                                          (get-in state '(:parameters :history-rate))))
-                                           (conj (:history p) {:x (:x p) :y (:y p)})
+                                           (conj (:history p) {:x (:x p) :y (:y p) :target 0})
                                            (:history p))})))
                          (:parts state)))
            :field field)))
@@ -238,7 +236,7 @@
   ; Set color.
   (println 'draw (:iterations state))
   (if (and (not (empty? (:parts state)))
-           (zero? (mod (:iterations state) 100)))
+           (zero? (mod (:iterations state) 200)))
     (do
       (println (q/current-frame-rate))
       (q/background 0.8)
@@ -258,7 +256,7 @@
 
       (q/stroke 0.5 0 0 0.2)
 
-      (let [values (map (fn [p] (call-map (:x p) (:y p) state))
+      (let [values (map :target
                         (concat (:parts state)
                                 (map first (:dead-parts state))))
             hue1 0.1
@@ -269,7 +267,7 @@
         (when true
           ;(q/stroke-weight 5)
           (doseq [p (:parts state)]
-            (q/stroke (fac (call-map (:x p) (:y p) state)) 1.0 0.8 0.2)
+            (q/stroke (fac (:target p)) 1.0 0.8 0.2)
             ;(q/point (:x p) (:y p))
             (doseq [[h hp] (map list (:history p) (rest (:history p)))]
               (q/line (:x h) (:y h) (:x hp) (:y hp)))
@@ -277,7 +275,7 @@
 
         (when true ; Dead part lines
           (doseq [p (:dead-parts state)]
-            (q/stroke (fac (call-map (:x (first p)) (:y (first p)) state)) 1.0 0.8 0.2)
+            (q/stroke (fac (:target (first p))) 1.0 0.8 0.2)
             (doseq [[h hp] (map list p (rest p))]
               (q/line (:x h) (:y h) (:x hp) (:y hp))))))))
 
@@ -303,8 +301,34 @@
     :contour {:half-look 2.0
               :step 1.0
               :nsamples 50
-              :allow-multiples-of 0.5
+              :allow-multiples-of 0.25
               :max-error 0.01
+              }
+    :history-rate 2
+    }
+
+   :sin-sin-sq-contours-stepped
+   {:map-fn sin-sin-sq
+    :map-fn-parameters '(0.005)
+    :update-type :contour
+    :contour {:half-look 2.0
+              :step 1.0
+              :nsamples 50
+              :allow-multiples-of 0.25
+              :max-error 0.01
+              }
+    :history-rate 2
+    }
+
+   :perlin-contours-stepped
+   {:map-fn pure-perlin
+    :map-fn-parameters '(0.05)
+    :update-type :contour
+    :contour {:half-look 2.0
+              :step 1.0
+              :nsamples 50
+              :allow-multiples-of 0.005
+              :max-error 0.005
               }
     :history-rate 2
     }
@@ -327,7 +351,7 @@
     :title "You spin my circle right round"
     :size [500 500]
     ; setup function called only once, during sketch initialization.
-    :setup (fn [] (setup (:sin-sin-contours-stepped parameters)))
+    :setup (fn [] (setup (:sin-sin-sq-contours-stepped parameters)))
     ; update-state is called on each iteration before draw-state.
     :update (fn [state] (-> state
                             update-state

@@ -58,6 +58,12 @@
   (* (/ 6.28 4) 
      (+ 2 (+ (q/sin (* x x scl)) (q/sin (* y y scl))))))
 
+(defn perlin-sin [x y pscl sscl]
+   (+ (q/sin (* x sscl)) 
+      (q/noise (* x pscl) (* y pscl))))
+
+
+
 
 (defn gradient [x y]
   (/ x 10.))
@@ -210,7 +216,7 @@
                  ;(+ (* 20 (circle i j)) (sin-sin-sq i j))
                  ;(+ (* 1 (circle i j)) (sin-sin i j))
                  ;(sin-sin-sq i j)
-                 ;(+ (sin-sin-sq i j) (* 10. (pure-perlin i j)))
+                 ;
                  ;(* (sin-sin i j) (circle i j))
                  ;(* (pure-perlin i j) (circle i j))
                  ;(/ (circle i j) (+ i 1))
@@ -318,7 +324,7 @@
 
    :sin-sin-sq-contours-stepped
    {:map-fn sin-sin-sq
-    :map-fn-parameters '(0.005)
+    :map-fn-parameters '(0.02)
     :update-type :contour
     :contour {:half-look 2.0
               :step 1.0
@@ -329,9 +335,38 @@
     :history-rate 2
     }
 
+   :sin-sin-sq-perlin-contours-stepped
+   {:map-fn (fn [i j sscl pscl] 
+              (+ (q/sin (* i i sscl))
+                 (q/sin (* j j sscl))
+                 (* 10. (pure-perlin i j pscl))))
+    :map-fn-parameters '(0.05 0.15)
+    :update-type :contour
+    :contour {:half-look 2.0
+              :step 1.0
+              :nsamples 50
+              :allow-multiples-of 0.05 ; very large because perlin is x10
+              :max-error 0.01
+              }
+    :history-rate 2
+    }
+
    :perlin-contours-stepped
    {:map-fn pure-perlin
-    :map-fn-parameters '(0.05)
+    :map-fn-parameters '(0.15)
+    :update-type :contour
+    :contour {:half-look 2.0
+              :step 1.0
+              :nsamples 50
+              :allow-multiples-of 0.025
+              :max-error 0.01
+              }
+    :history-rate 2
+    }
+
+   :perlin-sin-contours
+   {:map-fn perlin-sin
+    :map-fn-parameters '(0.05 0.5)
     :update-type :contour
     :contour {:half-look 2.0
               :step 1.0
@@ -360,7 +395,7 @@
     :title "You spin my circle right round"
     :size [500 500]
     ; setup function called only once, during sketch initialization.
-    :setup (fn [] (setup (:sin-sin-sq-contours-stepped parameters)))
+    :setup (fn [] (setup ((first args) parameters)))
     ; update-state is called on each iteration before draw-state.
     :update (fn [state] (-> state
                             update-state

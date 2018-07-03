@@ -390,12 +390,12 @@
     :history-rate 10
     }}
   )
-(defn -main [& args]
+(defn run-sketch [selector]
   (q/defsketch my-sketch
     :title "You spin my circle right round"
     :size [500 500]
     ; setup function called only once, during sketch initialization.
-    :setup (fn [] (setup ((first args) parameters)))
+    :setup (fn [] (setup (selector parameters)))
     ; update-state is called on each iteration before draw-state.
     :update (fn [state] (-> state
                             update-state
@@ -409,3 +409,26 @@
     ; Check quil wiki for more info about middlewares and particularly
     ; fun-mode.
     :middleware [m/fun-mode]))
+
+(defn -main [& args]
+  (run-sketch (first args)))
+
+(deftype V [^float x ^float y])
+(deftype Particle [^float x ^float y ^float vx ^float vy ^float r])
+
+(defn dist-sq [^Particle p1 ^Particle p2]
+  (let [dx (- (.x p2) (.x p1))
+        dy (- (.y p2) (.y p1))]
+    (+ (* dx dx) (* dy dy))))
+(defn pen-depth [^Particle p1 ^Particle p2]
+  (- (+ (.r p1) (.r p2)) (Math/sqrt (dist-sq p1 p2))))
+(defn collides? [^Particle p1 ^Particle p2]
+  (let [rs (+ (.r p1) (.r p2))]
+    (<= (* rs rs) (dist-sq p1 p2))))
+(defn mag [^V v] (Math/sqrt (+ (* (.x v) (.x v)) (* (.y v) (.y v)))))
+(defn scl [^V v ^double s] (V. (* (.x v) s) (* (.y v) s)))
+(defn collision-normal [^Particle p1 ^Particle p2]
+  (V. (- (.x p2) (.x p1))
+      (- (.y p2) (.y p1))))
+(defn rel-vel [^Particle p1 ^Particle p2] true)
+

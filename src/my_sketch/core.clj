@@ -4,7 +4,6 @@
 
 (set! *warn-on-reflection* true)
 
-
 (defn to-xy [i w] {:x (rem i w) :y (quot i w)})
 (defn from-xy [x y w] (+ x (* y w)))
 (defn wrap [x w] 
@@ -61,6 +60,18 @@
 (defn perlin-sin [x y pscl sscl]
    (+ (q/sin (* x sscl)) 
       (q/noise (* x pscl) (* y pscl))))
+
+(defn circles [i j cs]
+  (let [v (reduce 
+            (fn [{accx :x accy :y} {x :x y :y}]
+              {:x (+ accx x) :y (+ accy y)})
+            (map 
+              (fn [c] {:x (/ 10 (- i (:y c)))
+                       :y (- (/ 10 (- i (:x c))))})
+              cs))]
+    (q/atan2 (:y v) (:x v))))
+
+                
 
 
 
@@ -194,14 +205,16 @@
   ; Set color mode to HSB (HSV) instead of default RGB.
   (q/color-mode :hsb 1.0)
   ; setup function returns initial state.
+
   {
-   :x 50
-   :y 50
-   :scl 10
+   :x 500
+   :y 500
+   :scl 1
    :nparts 200
    :dead-parts '()
    :iterations 0
-   :parameters parameters
+   :parameters (assoc parameters
+                      :map-fn-parameters (list (q/load-image "zuzia.png")))
    :parts '()
    }
   )
@@ -264,33 +277,41 @@
 
       (q/stroke 0.5 0 0 0.2)
 
-      (let [values (map :target
-                        (concat (:parts state)
-                                (map first (:dead-parts state))))
-            hue1 0.1
-            hue2 0.9
-            high (apply max values)
-            low  (apply min values)
-            fac (fn [v] (+ hue1 (* (- hue2 hue1) (/ (- v low) high))))]
-        (when true
-          ;(q/stroke-weight 5)
-          (doseq [p (:parts state)]
-            (q/stroke (fac (:target p)) 1.0 0.8 0.2)
-            ;(q/point (:x p) (:y p))
-            (doseq [[h hp] (map list (:history p) (rest (:history p)))]
-              (q/line (:x h) (:y h) (:x hp) (:y hp)))
-            ))
+      (when false 
+        (let [values (map :target
+                          (concat (:parts state)
+                                  (map first (:dead-parts state))))
+              hue1 0.1
+              hue2 0.9
+              high (apply max values)
+              low  (apply min values)
+              fac (fn [v] (+ hue1 (* (- hue2 hue1) (/ (- v low) high))))]
+          (when true
+            ;(q/stroke-weight 5)
+            (doseq [p (:parts state)]
+              (q/stroke (fac (:target p)) 1.0 0.8 0.2)
+              ;(q/point (:x p) (:y p))
+              (doseq [[h hp] (map list (:history p) (rest (:history p)))]
+                (q/line (:x h) (:y h) (:x hp) (:y hp)))
+              ))
 
-        (when true ; Dead part lines
-          (doseq [p (:dead-parts state)]
-            (q/stroke (fac (:target (first p))) 1.0 0.8 0.2)
-            (doseq [[h hp] (map list p (rest p))]
-              (q/line (:x h) (:y h) (:x hp) (:y hp))))))))
+          (when true ; Dead part lines
+            (doseq [p (:dead-parts state)]
+              (q/stroke (fac (:target (first p))) 1.0 0.8 0.2)
+              (doseq [[h hp] (map list p (rest p))]
+                (q/line (:x h) (:y h) (:x hp) (:y hp)))))))
+
+    (when true ; Dead part lines
+      (doseq [p (:dead-parts state)]
+        (q/stroke 0.0 1.0 0.0 0.2)
+        (doseq [[h hp] (map list p (rest p))]
+          (q/line (:x h) (:y h) (:x hp) (:y hp)))))))
 
   (when (and false (not (nil? state)) (zero? (mod (:iterations state) 30)))
     (q/save "hairy.png"))
 
   )
+
 
 
 (def parameters 
@@ -307,6 +328,26 @@
     :map-fn-parameters '(0.005)
     :update-type :flow
     :history-rate 10
+    }
+
+   :circles-flow
+   {:map-fn circles
+    :map-fn-parameters '([{:x 200 :y 200} {:x 350 :y 350}])
+    :update-type :flow
+    :history-rate 10
+    }
+
+   :image-contours
+   {:map-fn (fn [x y img] (q/red (q/get-pixel img  x y))); (let [px (q/red (q/get-pixel img  x y))] (println x y px) px))
+    :map-fn-parameters '()
+    :update-type :contour
+    :contour {:half-look 1.5
+              :step 0.1
+              :nsamples 50
+              :allow-multiples-of 0.15
+              :max-error 0.01
+              }
+    :history-rate 2
     }
 
    :sin-sin-contours-stepped
@@ -390,12 +431,13 @@
     :history-rate 10
     }}
   )
-(defn run-sketch [selector]
+
+(defn -main [& args]
   (q/defsketch my-sketch
     :title "You spin my circle right round"
     :size [500 500]
     ; setup function called only once, during sketch initialization.
-    :setup (fn [] (setup (selector parameters)))
+    :setup (fn [] (setup ((first args) parameters)))
     ; update-state is called on each iteration before draw-state.
     :update (fn [state] (-> state
                             update-state
@@ -409,26 +451,3 @@
     ; Check quil wiki for more info about middlewares and particularly
     ; fun-mode.
     :middleware [m/fun-mode]))
-
-(defn -main [& args]
-  (run-sketch (first args)))
-
-(deftype V [^float x ^float y])
-(deftype Particle [^float x ^float y ^float vx ^float vy ^float r])
-
-(defn dist-sq [^Particle p1 ^Particle p2]
-  (let [dx (- (.x p2) (.x p1))
-        dy (- (.y p2) (.y p1))]
-    (+ (* dx dx) (* dy dy))))
-(defn pen-depth [^Particle p1 ^Particle p2]
-  (- (+ (.r p1) (.r p2)) (Math/sqrt (dist-sq p1 p2))))
-(defn collides? [^Particle p1 ^Particle p2]
-  (let [rs (+ (.r p1) (.r p2))]
-    (<= (* rs rs) (dist-sq p1 p2))))
-(defn mag [^V v] (Math/sqrt (+ (* (.x v) (.x v)) (* (.y v) (.y v)))))
-(defn scl [^V v ^double s] (V. (* (.x v) s) (* (.y v) s)))
-(defn collision-normal [^Particle p1 ^Particle p2]
-  (V. (- (.x p2) (.x p1))
-      (- (.y p2) (.y p1))))
-(defn rel-vel [^Particle p1 ^Particle p2] true)
-
